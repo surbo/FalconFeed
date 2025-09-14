@@ -1,0 +1,124 @@
+Updated 9/14/25 Version 0.1
+
+SIEM SEARCH
+ 
+#event_simpleName=ScriptFileWrittenInfo FileName=FileSearch_Results.py
+| parseJson(field=ScriptContent)
+| table([ComputerName,SearchTerm,FilePath,SHA256,Version,CreatedDate,LastModified,Timestamp,Error])
+
+=========================================================================================================
+
+# =========================================================================
+# ===                 CONFIGURATION: EDITABLE SETTINGS                  ===
+# =========================================================================
+Param (
+    [Parameter(Mandatory=$true)]
+    [String]$FileName,         # Filename to search for (e.g., "example.txt").
+    [String]$ReportLocation,   # Output directory for results. Default is "C:\ProgramData\CIRT\FileSearch".
+    [String]$ReportFile        # Output filename for results. Default is "FileSearch_Results.py".
+)
+# =========================================================================
+# ===            PARAMETER EXAMPLES: HOW TO RUN THE SCRIPT            ===
+# =========================================================================
+#
+# To run the script from a local PowerShell prompt:
+#
+# 1. To search for 'telerik.dll' and use default report settings:
+#    .\YourScript.ps1 -FileName "telerik.dll"
+#
+# 2. To specify a custom report location and filename:
+#    .\YourScript.ps1 -FileName "telerik.dll" -ReportLocation "C:\MyCustomReports" -ReportFile "Telerik_Scan.json"
+#
+# =========================================================================
+# ===            RTR EXAMPLES: HOW TO RUN THE SCRIPT IN A CONSOLE     ===
+# =========================================================================
+#
+# These examples assume the script is uploaded as a CloudFile named "FileSearch".
+#
+# 1. To run with just the required 'FileName' parameter:
+#    runscript -CloudFile="FileSearch" -CommandLine='-FileName "telerik.dll"'
+#
+# 2. To specify a custom report location and filename:
+#    runscript -CloudFile="FileSearch" -CommandLine='-FileName "telerik.dll" -ReportLocation "C:\MyCustomReports" -ReportFile "Telerik_Scan.json"'
+#
+# =========================================================================
+# ===                  END CONFIGURATION SECTION                      ===
+# =========================================================================
+ 
+# Set default values if parameters are not provided
+$ReportLocation = if ($ReportLocation) { [System.IO.Path]::GetFullPath($ReportLocation) } else { "C:\ProgramData\CIRT\FileSearch" }
+$ReportFile = if ($ReportFile) { $ReportFile } else { "FileSearch_Results.py" }
+$fullReportPath = Join-Path -Path $ReportLocation -ChildPath $ReportFile
+ 
+# Ensure report location exists and is hidden
+if (-not (Test-Path $ReportLocation)) {
+    New-Item -Path $ReportLocation -ItemType Directory -Force | Out-Null
+    (Get-Item $ReportLocation).Attributes = [System.IO.FileAttributes]::Hidden
+}
+ 
+# The first run will create the file, subsequent runs will overwrite it by default.
+ 
+# Start a timer for the operation
+$stopwatch = [System.Diagnostics.Stopwatch]::StartNew()
+ 
+# Use dir /S /B to quickly find file paths, then process them in PowerShell
+Write-Output "Searching for files named '$FileName' on C:\ using dir"
+$results = @(cmd.exe /c "dir C:\$FileName /S /B 2>nul")
+ 
+if ($results.Count -gt 0) {
+    foreach ($file in $results) {
+        try {
+            # Compute SHA256 hash
+            $sha256 = (Get-FileHash -Path $file -Algorithm SHA256 -ErrorAction Stop).Hash
+            
+            # Get file version, timestamps, and other properties
+            $version = (Get-Item -Path $file -ErrorAction Stop).VersionInfo.FileVersion
+            $created = (Get-Item -Path $file).CreationTime.ToString("o")
+            $modified = (Get-Item -Path $file).LastWriteTime.ToString("o")
+            
+            # Create a custom object for a successful result
+            $reportObject = [PSCustomObject]@{
+                Status       = "Success"
+                ComputerName = $env:COMPUTERNAME
+                SearchTerm   = $FileName
+                FilePath     = $file
+                SHA256       = $sha256
+                Version      = $version
+                CreatedDate  = $created
+                LastModified = $modified
+                Timestamp    = (Get-Date).ToString("o")
+                Error        = $null
+            }
+            # Convert the single object to JSON and overwrite the file.
+            $reportObject | ConvertTo-Json -Depth 5 -Compress | Set-Content -Path $fullReportPath -Encoding utf8 -Force
+        }
+        catch {
+            # Create a custom object for an error entry
+            $errorObject = [PSCustomObject]@{
+                Status       = "Error"
+                ComputerName = $env:COMPUTERNAME
+                SearchTerm   = $FileName
+                FilePath     = $file
+                SHA256       = $null
+                Version      = $null
+                CreatedDate  = (Get-Item -Path $file).CreationTime.ToString("o")
+                LastModified = (Get-Item -Path $file).LastWriteTime.ToString("o")
+                Timestamp    = (Get-Date).ToString("o")
+                Error        = $_.Exception.Message
+            }
+            # Convert the single error object to JSON and overwrite the file.
+            $errorObject | ConvertTo-Json -Depth 5 -Compress | Set-Content -Path $fullReportPath -Encoding utf8 -Force
+            Write-Warning "Could not process file: $($file) - $_.Exception.Message"
+        }
+    }
+    
+    Write-Output "[+] $($results.Count) files named '$FileName' were found. See report for details."
+} else {
+    Write-Output "[!] No files named '$FileName' were found on C:\."
+}
+ 
+# Cleanup logic
+Remove-Item -Path $ReportLocation -Recurse -Force | Out-Null
+ 
+$stopwatch.Stop()
+Write-Output "Run Time: $($stopwatch.Elapsed.TotalSeconds.ToString()) seconds"
