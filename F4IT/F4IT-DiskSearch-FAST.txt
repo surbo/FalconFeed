@@ -1,0 +1,149 @@
+Updated 9/14/25 Version 0.1
+
+
+Extractions Terms
+=================
+SearchTerm | FilePath | SHA256 | Version | Created | LastModified | TimeStamp
+==============================================================================
+
+SIEM SEARCH
+===========
+#repo="falcon_for_it" event_type=ITQueryResult  
+| replace(";", with="\n", field=result.FilePath)
+| replace(";", with="\n", field=result.SHA256)
+| replace(";", with="\n", field=result.Version)
+| replace(";", with="\n", field=result.Created)
+| replace(";", with="\n", field=result.LastModified)
+| replace(";", with="\n", field=result.TimeStamp)
+|replace(" ", with="", field=result.FilePath)
+|replace(" ", with="", field=result.SHA256)
+|replace(" ", with="", field=result.Version)
+|replace(" ", with="", field=result.Created)
+|replace(" ", with="", field=result.LastModified)
+|replace(" ", with="", field=result.TimeStamp)
+| table([hostname,result.SearchTerm,result.FilePath,result.SHA256,result.Version,result.Created,result.LastModified,result.TimeStamp])
+
+===========================================================================================================================================
+
+
+# =========================================================================
+# ===              CONFIGURATION: EDITABLE SETTINGS                     ===
+# =========================================================================
+ 
+# === Enter the filename to search for here. No other changes are needed. ===
+$SearchTerm = "*.mp3"
+ 
+# =========================================================================
+# ===        DO NOT EDIT BELOW THIS LINE UNLESS NEEDED                    ===
+# =========================================================================
+ 
+# Start a timer for the operation
+$stopwatch = [System.Diagnostics.Stopwatch]::StartNew()
+ 
+# Initialize an array to hold the data for all found files
+$allFilesData = @()
+ 
+# Use dir /S /B to quickly find file paths, then process them in PowerShell
+Write-Output "Searching for files named '$SearchTerm' on C:\ using dir"
+$results = @(cmd.exe /c "dir /S /B C:\$SearchTerm 2>nul")
+ 
+if ($results.Count -gt 0) {
+    # Add this line to output the count of files found
+    Write-Output "[+] $($results.Count) files named '$SearchTerm' were found."
+    
+    $fileCount = 0
+    foreach ($file in $results) {
+        $fileCount++
+        Write-Progress -Activity "Processing files" -Status "File $fileCount of $($results.Count)" -PercentComplete (($fileCount / $results.Count) * 100)
+        
+        # Initialize properties to null
+        $filePath = $null
+        $sha256 = $null
+        $version = $null
+        $created = $null
+        $modified = $null
+        $fileError = $null
+ 
+        try {
+            # Get file path
+            $filePath = $file
+            
+            # Get file properties. If an error occurs, the variable remains null.
+            try { 
+                $sha256 = (Get-FileHash -Path $file -Algorithm SHA256 -ErrorAction Stop).Hash 
+            } catch { 
+                $fileError = $_.Exception.Message
+            }
+            try { 
+                $version = (Get-Item -Path $file -ErrorAction Stop).VersionInfo.FileVersion 
+            } catch { 
+                if (-not $fileError) { $fileError = $_.Exception.Message } else { $fileError += " | " + $_.Exception.Message }
+            }
+            try { 
+                $fileItem = Get-Item -Path $file
+                $created = $fileItem.CreationTime.ToString('o')
+                $modified = $fileItem.LastWriteTime.ToString('o') 
+            } catch { 
+                if (-not $fileError) { $fileError = $_.Exception.Message } else { $fileError += " | " + $_.Exception.Message }
+            }
+ 
+            # Create an object with the collected data
+            $fileData = [PSCustomObject]@{
+                FilePath = $filePath
+                SHA256 = $sha256
+                Version = $version
+                CreatedDate = $created
+                LastModified = $modified
+                Error = $fileError
+            }
+            # Add the object to the array
+            $allFilesData += $fileData
+ 
+        } catch {
+            # This catch block is for unexpected errors, as individual property errors are now handled above.
+            Write-Warning "An unexpected error occurred while processing $($file): $($_.Exception.Message)"
+            $allFilesData += [PSCustomObject]@{
+                FilePath = $file
+                SHA256 = $null
+                Version = $null
+                CreatedDate = $null
+                LastModified = $null
+                Error = $_.Exception.Message
+            }
+        }
+    }
+    
+    Write-Progress -Activity "Processing files" -Completed
+    
+    # Aggregate and join all the collected data
+    $SearchTermString = $SearchTerm
+    $FilePathString = ($allFilesData.FilePath | ForEach-Object { if ($_) { $_ } else { "null" } }) -join ';'
+    $SHA256String = ($allFilesData.SHA256 | ForEach-Object { if ($_) { $_ } else { "null" } }) -join ';'
+    $VersionString = ($allFilesData.Version | ForEach-Object { if ($_) { $_ } else { "null" } }) -join ';'
+    $CreatedDateString = ($allFilesData.CreatedDate | ForEach-Object { if ($_) { $_ } else { "null" } }) -join ';'
+    $LastModifiedString = ($allFilesData.LastModified | ForEach-Object { if ($_) { $_ } else { "null" } }) -join ';'
+    $TimestampString = (Get-Date).ToString('o')
+ 
+    # Output the single pipe-delimited line
+    Write-Output "$SearchTermString|$FilePathString|$SHA256String|$VersionString|$CreatedDateString|$LastModifiedString|$TimestampString"
+ 
+} else {
+    # Add this line to output that no files were found
+    Write-Output "[!] No files named '$SearchTerm' were found on C:\."
+    
+    # This block is for when no files are found.
+    # It ensures that an empty pipe-delimited string is still output.
+    $SearchTermString = $SearchTerm
+    $FilePathString = "null"
+    $SHA256String = "null"
+    $VersionString = "null"
+    $CreatedDateString = "null"
+    $LastModifiedString = "null"
+    $TimestampString = (Get-Date).ToString('o')
+ 
+    Write-Output "$SearchTermString|$FilePathString|$SHA256String|$VersionString|$CreatedDateString|$LastModifiedString|$TimestampString"
+}
+ 
+# Stop the timer and output the total run time
+$stopwatch.Stop()
+Write-Output "Run Time: $($stopwatch.Elapsed.TotalSeconds.ToString()) seconds"
