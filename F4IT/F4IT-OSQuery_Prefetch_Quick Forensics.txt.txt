@@ -1,0 +1,10 @@
+SELECT
+  filename,
+  path,
+  size,
+  btime,
+  mtime,
+  atime
+FROM file
+WHERE
+  path LIKE 'C:\Windows\Prefetch\%.pf';
