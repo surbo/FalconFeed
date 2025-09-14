@@ -1,0 +1,17 @@
+Updated 9/14/25 Version 0.1
+
+
+
+
+SELECT
+    datetime,
+    provider_name,
+    eventid,
+    task,
+    keywords,
+    data
+FROM
+    windows_eventlog
+WHERE
+    eventid IN (4624, 4625, 4688, 4648, 4672, 4720, 4722, 4738, 4740, 4742, 4756, 4768, 4769, 4776, 1102, 5136, 5140, 4902, 4904, 4985)
+    AND channel = 'Security';
