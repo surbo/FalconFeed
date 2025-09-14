@@ -1,0 +1,107 @@
+Updated 9/14/25 Version 0.1
+DIY (WORKS AS IS FOR F4IT)
+
+SIEM SEARCH
+============
+#event_simpleName=ScriptFileWrittenInfo FileName=prefetch_data.py OR FileName=security_events.py
+| parseJson(field=ScriptContent)
+// | table([ComputerName,TimeCreated,Id,LevelDisplayName,ProviderName,Message])
+|table([ComputerName,FileName,Name,CreationTime,TimeCreated,Id,LevelDisplayName,ProviderName,Message,LastWriteTime,"Length"])
+===============================================================================================================================
+
+
+ #
+# PowerShell Script to Extract Windows Security Event Logs and Prefetch Data
+#
+# --------------------------------------------------------------------------------------------------
+# Configurable Section
+# --------------------------------------------------------------------------------------------------
+ 
+# 🔪 Security Event IDs for a potential breach.
+$EventIDs = @(
+    4624, 4625, 4688, 4648, 4672, 4720, 4722, 4738, 4740, 4742,
+    4756, 4768, 4769, 4776, 1102, 5136, 5140, 4902, 4904, 4985
+)
+ 
+# Time Filter Configuration
+# Set the time unit and value for the log query.
+# Valid units are 'Minutes' and 'Days'.
+$TimeFilterUnit = 'Minutes'
+$TimeFilterValue = 30  # Default to the last 30 minutes.
+ 
+# --------------------------------------------------------------------------------------------------
+# Event Log Extraction Logic
+# --------------------------------------------------------------------------------------------------
+ 
+$LogName = 'Security'
+$EventsOutputFilePath = "C:\ProgramData\SecurityLogs\security_events.py"
+$EventsOutputPath = Split-Path -Path $EventsOutputFilePath -Parent
+if (-not (Test-Path -Path $EventsOutputPath)) {
+    New-Item -Path $EventsOutputPath -ItemType Directory -Force | Out-Null
+}
+ 
+$StartTime = Get-Date
+if ($TimeFilterUnit -eq 'Days') {
+    $StartTime = $StartTime.AddDays(-$TimeFilterValue)
+} elseif ($TimeFilterUnit -eq 'Minutes') {
+    $StartTime = $StartTime.AddMinutes(-$TimeFilterValue)
+}
+ 
+$Events = Get-WinEvent -FilterHashtable @{
+    LogName = $LogName
+    ID = $EventIDs
+    StartTime = $StartTime
+} -ErrorAction SilentlyContinue
+ 
+if ($Events) {
+    Write-Host "✅ Found $($Events.Count) events to process."
+    foreach ($Event in $Events) {
+        $CustomObject = [PSCustomObject]@{
+            TimeCreated = $Event.TimeCreated.ToUniversalTime().ToString('o')
+            Id = $Event.Id
+            LevelDisplayName = $Event.LevelDisplayName
+            ProviderName = $Event.ProviderName
+            Message = $Event.Message
+        }
+        $jsonOutput = $CustomObject | ConvertTo-Json -Depth 5 -Compress
+        $jsonOutput | Out-File -FilePath $EventsOutputFilePath -Encoding UTF8 -Force
+    }
+    Write-Host "✅ Successfully processed and saved the last event to $($EventsOutputFilePath)"
+} else {
+    Write-Host "⚠️ No events found. No file was created."
+}
+ 
+# --------------------------------------------------------------------------------------------------
+# Prefetch Data Extraction Logic
+# --------------------------------------------------------------------------------------------------
+ 
+# Prefetch file path.
+$PrefetchFolderPath = "$env:SystemRoot\Prefetch"
+$PrefetchOutputFilePath = "C:\ProgramData\SecurityLogs\prefetch_data.py"
+$PrefetchOutputPath = Split-Path -Path $PrefetchOutputFilePath -Parent
+ 
+if (-not (Test-Path -Path $PrefetchOutputPath)) {
+    New-Item -Path $PrefetchOutputPath -ItemType Directory -Force | Out-Null
+}
+ 
+if (Test-Path -Path $PrefetchFolderPath) {
+    $PrefetchFiles = Get-ChildItem -Path $PrefetchFolderPath -Filter "*.pf" -ErrorAction SilentlyContinue | Select-Object Name, CreationTime, LastWriteTime, Length
+ 
+    if ($PrefetchFiles) {
+        Write-Host "✅ Found $($PrefetchFiles.Count) prefetch files to process."
+        foreach ($PrefetchFile in $PrefetchFiles) {
+            $CustomObject = [PSCustomObject]@{
+                Name = $PrefetchFile.Name
+                CreationTime = $PrefetchFile.CreationTime.ToUniversalTime().ToString('o')
+                LastWriteTime = $PrefetchFile.LastWriteTime.ToUniversalTime().ToString('o')
+                Length = $PrefetchFile.Length
+            }
+            $jsonOutput = $CustomObject | ConvertTo-Json -Depth 5 -Compress
+            $jsonOutput | Out-File -FilePath $PrefetchOutputFilePath -Encoding UTF8 -Force
+        }
+        Write-Host "✅ Successfully processed and saved the last prefetch file to $($PrefetchOutputFilePath)"
+    } else {
+        Write-Host "⚠️ No Prefetch files found. No file was created."
+    }
+} else {
+    Write-Host "⚠️ Prefetch folder not found at $($PrefetchFolderPath)."
