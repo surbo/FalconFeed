@@ -1,0 +1,1 @@
+Start-Process powershell.exe -ArgumentList "-ExecutionPolicy Bypass", "-File", ".\\AlertWebHistory.ps1"
