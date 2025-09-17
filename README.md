@@ -2,7 +2,7 @@
 
 A tool that allows you to capture data from a host and send it into CrowdStrike's Next-Gen SIEM without the use of a connector, leveraging the power of RTR (Real-Time Response) or F4IT (Falcon for IT).
 
-![Falcon Feed Logo](images/Falcon Feed.png)
+![Falcon Feed Logo](images/FalconFeed.png)
 
 ## Software Use Disclaimer
 
