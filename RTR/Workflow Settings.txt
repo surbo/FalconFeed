@@ -1,0 +1,21 @@
+Workflow FALCON-WebHistory
+
+name: FALCON-WebHistory
+
+trigger: severity_is_greater_than_or_equal_to_medium
+event: Investigatable/EPP
+type: Signal
+
+
+actions:
+ PutFile:
+   next:
+    RunAlertWebHistory
+    file_name: AlertWebHistory.ps1
+    file_path: C:\
+
+    tags: - FC25WIN
+
+conditions:
+  sensor_platform_is_equal_to_windows
+  severity_is_greater_than_or_equal_to_medium
